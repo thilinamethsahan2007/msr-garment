@@ -141,11 +141,19 @@ const Model = ({ bodyColor, collarColor, sleeveColor, view, logos }: PoloVisuali
       if ((child as THREE.Mesh).isMesh) {
         const mesh = child as THREE.Mesh;
         
+        // Always compute normals directly to fix unshaded black shading if normal maps drop during FBX export
+        if (!mesh.geometry.attributes.normal) {
+          mesh.geometry.computeVertexNormals();
+        }
+
         const applyColor = (mat: THREE.Material) => {
-          if (!mat || !mat.name) return;
-          const matName = mat.name.toLowerCase();
+          if (!mat) return;
+          const matName = mat.name ? mat.name.toLowerCase() : '';
           
-          // Force all main fabric materials to be fully opaque to fix Blender export bugs
+          // Disable accidental black vertex colors exported from Blender Eevee/Cycles
+          (mat as any).vertexColors = false;
+          
+          // Force all main fabric materials to be fully opaque to fix transparency clipping bugs
           mat.transparent = false;
           mat.depthWrite = true;
           mat.opacity = 1;
@@ -159,18 +167,14 @@ const Model = ({ bodyColor, collarColor, sleeveColor, view, logos }: PoloVisuali
             stdMat.metalness = 0.0;
             stdMat.roughnessMap = null; 
             stdMat.metalnessMap = null;
-            
-            // Apply the procedural fabric bump map
-            stdMat.bumpMap = bumpMap;
-            stdMat.bumpScale = 0.03; // Subtle physical thread shadow depth
+            stdMat.bumpMap = bumpMap; // Subtle physical thread shadow depth
+            stdMat.bumpScale = 0.03;
           }
           
           if ('shininess' in mat) {
             const phongMat = mat as THREE.MeshPhongMaterial;
             phongMat.shininess = 0;
             phongMat.specular = new THREE.Color(0x000000);
-            
-            // Apply the procedural fabric bump map
             phongMat.bumpMap = bumpMap;
             phongMat.bumpScale = 0.03;
           }
