@@ -16,7 +16,7 @@ interface PoloVisualizerProps {
   onLogoDragEnd?: () => void;
 }
 
-const LogoDecal = ({ logo }: { logo: Logo }) => {
+const LogoDecal = ({ logo, bodyMesh }: { logo: Logo, bodyMesh?: THREE.Mesh | null }) => {
   const texture = useTexture(logo.imageUrl);
   texture.colorSpace = THREE.SRGBColorSpace; // Guarantee matching colors
   
@@ -29,7 +29,6 @@ const LogoDecal = ({ logo }: { logo: Logo }) => {
   let ratio = logo.size?.width ? logo.size.height / logo.size.width : 1;
 
   // Approximate 3D coordinates based on typical shirt placement
-  // We apply slight rotations to match the curved fabric of the shirt
   switch(logo.position.placement) {
     case 'left-chest': 
       pos = [11, 14, 19]; 
@@ -60,6 +59,31 @@ const LogoDecal = ({ logo }: { logo: Logo }) => {
       break;
   }
 
+  const meshRef = React.useRef<THREE.Mesh>(bodyMesh as any);
+
+  if (bodyMesh) {
+    return (
+      <Decal
+        mesh={meshRef as any}
+        position={pos}
+        rotation={rot}
+        scale={[scaleNum, scaleNum * ratio, 20]} // 20 controls projection depth envelope length
+      >
+        <meshStandardMaterial 
+          map={texture} 
+          transparent 
+          depthTest 
+          depthWrite={false} 
+          polygonOffset 
+          polygonOffsetFactor={-4}
+          roughness={1}
+          envMapIntensity={0.8}
+          side={THREE.DoubleSide}
+        />
+      </Decal>
+    );
+  }
+
   return (
     <mesh position={pos} rotation={rot}>
       <planeGeometry args={[scaleNum, scaleNum * ratio]} />
@@ -76,32 +100,6 @@ const LogoDecal = ({ logo }: { logo: Logo }) => {
       />
     </mesh>
   );
-};
-
-const LogoPatch = ({ mesh, logo }: { mesh: THREE.Mesh, logo: Logo }) => {
-  const texture = useTexture(logo.imageUrl);
-  
-  useEffect(() => {
-    texture.colorSpace = THREE.SRGBColorSpace;
-    const mat = new THREE.MeshStandardMaterial({
-      map: texture,
-      transparent: true,
-      roughness: 1.0,
-      envMapIntensity: 0.8,
-      polygonOffset: true,
-      polygonOffsetFactor: -1,
-      side: THREE.DoubleSide
-    });
-    mesh.material = mat;
-    mesh.visible = true;
-    
-    return () => {
-      mesh.visible = false;
-      mat.dispose();
-    };
-  }, [mesh, texture]);
-  
-  return null;
 };
 
 const Model = ({ bodyColor, collarColor, sleeveColor, view, logos }: PoloVisualizerProps) => {
@@ -200,8 +198,9 @@ const Model = ({ bodyColor, collarColor, sleeveColor, view, logos }: PoloVisuali
     cloned.position.z -= center.z;
   }, [cloned]);
 
-  const logoMeshes = useMemo(() => {
+  const { logoMeshes, bodyMesh } = useMemo(() => {
     const meshes: Record<string, THREE.Mesh> = {};
+    let mainBody: THREE.Mesh | null = null;
     const exportedNames: string[] = [];
     
     cloned.traverse(c => {
@@ -233,14 +232,19 @@ const Model = ({ bodyColor, collarColor, sleeveColor, view, logos }: PoloVisuali
           }
           
           if (placement) meshes[placement] = c as THREE.Mesh;
+        } else {
+          // Identify the main fabric mesh to intelligently project decals mathematically onto
+          if (!mainBody && !name.includes('button')) {
+             mainBody = c as THREE.Mesh;
+          }
+          if (name.includes('body') || name.includes('shirt') || name.includes('fabric')) {
+             mainBody = c as THREE.Mesh;
+          }
         }
       }
     });
     
-    console.log("📦 All Blender Meshes Imported:", exportedNames);
-    console.log("🎯 Successfully Mapped Logo Patches:", Object.keys(meshes));
-    
-    return meshes;
+    return { logoMeshes: meshes, bodyMesh: mainBody };
   }, [cloned]);
 
   const rotationY = view === 'front' ? 0 : Math.PI;
@@ -248,14 +252,9 @@ const Model = ({ bodyColor, collarColor, sleeveColor, view, logos }: PoloVisuali
   return (
     <group rotation={[0, rotationY, 0]}>
       <primitive object={cloned} />
-      {logos && logos.length > 0 && logos.map(logo => {
-        const nativeMesh = logoMeshes[logo.position.placement];
-        if (nativeMesh) {
-           return <LogoPatch key={logo.id} mesh={nativeMesh} logo={logo} />;
-        }
-        // Graceful fallback to floating planes if the user missed a patch in Blender
-        return <LogoDecal key={`fallback-${logo.id}`} logo={logo} />;
-      })}
+      {logos && logos.length > 0 && logos.map(logo => (
+        <LogoDecal key={logo.id} logo={logo} bodyMesh={bodyMesh} />
+      ))}
     </group>
   );
 };
