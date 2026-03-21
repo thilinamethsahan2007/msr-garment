@@ -16,6 +16,9 @@ interface PoloVisualizerProps {
   onLogoDragEnd?: () => void;
 }
 
+// @ts-ignore - three-stdlib missing from pure TS env
+import { DecalGeometry } from 'three-stdlib';
+
 const LogoDecal = ({ logo, bodyMesh }: { logo: Logo, bodyMesh?: THREE.Mesh | null }) => {
   const texture = useTexture(logo.imageUrl);
   texture.colorSpace = THREE.SRGBColorSpace; // Guarantee matching colors
@@ -59,16 +62,23 @@ const LogoDecal = ({ logo, bodyMesh }: { logo: Logo, bodyMesh?: THREE.Mesh | nul
       break;
   }
 
-  const meshRef = React.useRef<THREE.Mesh>(bodyMesh as any);
+  const decalGeometry = useMemo(() => {
+    if (!bodyMesh) return null;
+    try {
+      bodyMesh.updateMatrixWorld(true);
+      const position = new THREE.Vector3(...pos);
+      const orientation = new THREE.Euler(...rot);
+      const size = new THREE.Vector3(scaleNum, scaleNum * ratio, 20);
+      return new DecalGeometry(bodyMesh, position, orientation, size);
+    } catch (e) {
+      console.error('Decal generation failed', e);
+      return null;
+    }
+  }, [bodyMesh, pos, rot, scaleNum, ratio]);
 
-  if (bodyMesh) {
+  if (bodyMesh && decalGeometry) {
     return (
-      <Decal
-        mesh={meshRef as any}
-        position={pos}
-        rotation={rot}
-        scale={[scaleNum, scaleNum * ratio, 20]} // 20 controls projection depth envelope length
-      >
+      <mesh geometry={decalGeometry}>
         <meshStandardMaterial 
           map={texture} 
           transparent 
@@ -80,7 +90,7 @@ const LogoDecal = ({ logo, bodyMesh }: { logo: Logo, bodyMesh?: THREE.Mesh | nul
           envMapIntensity={0.8}
           side={THREE.DoubleSide}
         />
-      </Decal>
+      </mesh>
     );
   }
 
