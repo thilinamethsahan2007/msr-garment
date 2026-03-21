@@ -63,15 +63,14 @@ const LogoDecal = ({ logo }: { logo: Logo }) => {
   return (
     <mesh position={pos} rotation={rot}>
       <planeGeometry args={[scaleNum, scaleNum * ratio]} />
-      <meshStandardMaterial 
+      <meshBasicMaterial 
         map={texture} 
         transparent 
         depthTest 
         depthWrite={false} 
+        toneMapped={false}
         polygonOffset 
         polygonOffsetFactor={-4}
-        roughness={1}
-        envMapIntensity={0.8}
         side={THREE.DoubleSide}
       />
     </mesh>
@@ -83,11 +82,13 @@ const LogoPatch = ({ mesh, logo }: { mesh: THREE.Mesh, logo: Logo }) => {
   
   useEffect(() => {
     texture.colorSpace = THREE.SRGBColorSpace;
-    const mat = new THREE.MeshStandardMaterial({
+    
+    // Using an Unlit Basic Material entirely bypasses Unity/Three irradiance multiplication,
+    // ensuring the logo color matches the native uploaded image pixels exactly.
+    const mat = new THREE.MeshBasicMaterial({
       map: texture,
       transparent: true,
-      roughness: 1.0,
-      envMapIntensity: 0.8,
+      toneMapped: false,
       polygonOffset: true,
       polygonOffsetFactor: -1,
       side: THREE.DoubleSide
